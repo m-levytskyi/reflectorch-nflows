@@ -42,3 +42,6 @@ documentation/_build/*
 
 #Other
 tensorboard_runs
+
+#Virtual Environments
+nfref/
