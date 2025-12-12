@@ -6,6 +6,10 @@ import safetensors.torch
 import os
 
 from reflectorch import *
+from reflectorch.ml.dataloaders import ReflectivityDataLoader
+from reflectorch.ml.trainers import NFlowTrainer
+from reflectorch.ml.schedulers import CosineAnnealingWithWarmup
+from reflectorch.models.networks.nf_network import NFNetwork
 from reflectorch.runs.config import load_config
 
 __all__ = [
@@ -17,6 +21,9 @@ __all__ = [
     "get_callbacks_by_name",
     "convert_pt_to_safetensors",
 ]
+
+# Default project root (used when config['general']['root_dir'] is null)
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 def init_from_conf(conf, **kwargs):
@@ -33,7 +40,12 @@ def init_from_conf(conf, **kwargs):
     cls_name = conf['cls']
     if not cls_name:
         return
-    cls = globals().get(cls_name)
+    # NOTE: `reflectorch.runs.utils` participates in `reflectorch`'s import graph.
+    # Using only `globals()` can miss symbols due to circular-import partial initialization.
+    # Prefer resolving from the fully initialized `reflectorch` package.
+    import reflectorch as _reflectorch
+
+    cls = getattr(_reflectorch, cls_name, None) or globals().get(cls_name)
 
     if not cls:
         raise ValueError(f'Unknown class {cls_name}')
@@ -294,7 +306,15 @@ def load_pretrained(model, model_name: str, saved_models_dir: Path):
 
 def init_dset(config: dict):
     """Initializes the dataset / dataloader object"""
-    dset_cls = globals().get(config['cls']) if 'cls' in config else ReflectivityDataLoader
+    import reflectorch as _reflectorch
+
+    if 'cls' in config:
+        dset_cls = getattr(_reflectorch, config['cls'], None) or globals().get(config['cls'])
+    else:
+        dset_cls = ReflectivityDataLoader
+
+    if dset_cls is None:
+        raise ValueError(f"Unknown class {config.get('cls')}")
     dset_kwargs = config.get('kwargs', {})
 
     prior_sampler = init_from_conf(config['prior_sampler'])
