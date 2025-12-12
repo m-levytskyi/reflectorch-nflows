@@ -45,3 +45,6 @@ tensorboard_runs
 
 #Virtual Environments
 nfref/
+nfref_py310/
+
+1/
