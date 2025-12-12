@@ -343,6 +343,8 @@ class EasyInferenceModel(object):
 
         if isinstance(self.trainer.loader.q_generator, ConstantQ):
             q_values = self.trainer.loader.q_generator.q
+            if torch.is_tensor(q_values) and q_values.dim() == 1:
+                q_values = q_values[None, :]
         else:
             q_values = torch.atleast_2d(to_t(q_values)).to(scaled_curve)
 
@@ -577,6 +579,8 @@ class EasyInferenceModel(object):
 
         if isinstance(self.trainer.loader.q_generator, ConstantQ):
             q_values = self.trainer.loader.q_generator.q
+            if torch.is_tensor(q_values) and q_values.dim() == 1:
+                q_values = q_values[None, :]
         else:
             q_values = torch.atleast_2d(to_t(q_values)).to(scaled_curve)
 
