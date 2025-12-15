@@ -7,6 +7,7 @@ import os
 
 from reflectorch import *
 from reflectorch.ml.dataloaders import ReflectivityDataLoader
+from reflectorch.ml.callbacks import SaveBestModel, LogLosses
 from reflectorch.ml.trainers import NFlowTrainer
 from reflectorch.ml.schedulers import CosineAnnealingWithWarmup
 from reflectorch.models.networks.nf_network import NFNetwork
