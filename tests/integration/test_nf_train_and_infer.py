@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import torch
 import yaml
+from typing import Any, cast
 
 from reflectorch.inference.inference_model import EasyInferenceModel
 from reflectorch.runs.utils import get_trainer_from_config
@@ -14,8 +15,11 @@ from reflectorch.runs.utils import get_trainer_from_config
     os.environ.get("REFLECTORCH_RUN_TRAIN_TEST", "0") != "1",
     reason="Set REFLECTORCH_RUN_TRAIN_TEST=1 to enable the (slow) train+infer integration test.",
 )
-def test_nf_train_save_load_and_sample(tmp_path: Path):
+def test_nf_train_save_load_and_sample(tmp_path: Path, capsys):
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    repo_root = Path(__file__).resolve().parents[2]
+    experimental_data_dir = repo_root / "tests" / "data" / "experimental"
 
     # Create an isolated root_dir so training/inference don't touch repo-level saved_models.
     root_dir = tmp_path / "reflectorch_root"
@@ -32,8 +36,16 @@ def test_nf_train_save_load_and_sample(tmp_path: Path):
             "root_dir": str(root_dir),
         },
         "dset": {
-            "cls": "ReflectivityDataLoader",
-            "kwargs": {},
+            "cls": "MixedReflectivityDataLoader",
+            "kwargs": {
+                "data_dir": str(experimental_data_dir),
+                "curve_glob": "*_experimental_curve.dat",
+                "curve_suffix": "_experimental_curve.dat",
+                "model_suffix": "_model.txt",
+                "background": 5.0e-7,
+                "q_resolution": 0.1,
+                "mix_fraction": 0.5,
+            },
             "prior_sampler": {
                 "cls": "SubpriorParametricSampler",
                 "kwargs": {
@@ -155,30 +167,52 @@ def test_nf_train_save_load_and_sample(tmp_path: Path):
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False)
 
+    with capsys.disabled():
+        print(f"[reflectorch][test] device={device}")
+        print(f"[reflectorch][test] experimental_data_dir={experimental_data_dir}")
+        print(f"[reflectorch][test] wrote config: {config_path}")
+
     # Train.
     trainer = get_trainer_from_config(config)
-    trainer.train(config["training"]["num_iterations"], callbacks=(), disable_tqdm=True, update_tqdm_freq=999)
+    with capsys.disabled():
+        print(f"[reflectorch][test] training for {config['training']['num_iterations']} iterations...")
+        trainer.train(
+            config["training"]["num_iterations"],
+            callbacks=(),
+            disable_tqdm=False,
+            update_tqdm_freq=10,
+        )
+        print("[reflectorch][test] training done")
 
     # Save weights in the canonical location EasyInferenceModel expects.
     model_path = root_dir / "saved_models" / f"model_{name}.pt"
     torch.save({"model": trainer.model.state_dict()}, model_path)
     assert model_path.exists()
 
+    with capsys.disabled():
+        print(f"[reflectorch][test] saved model: {model_path}")
+
     # Reload + run NF sampling inference.
     infer = EasyInferenceModel(
         config_name=name,
         root_dir=str(root_dir),
         weights_format="pt",
-        repo_id=None,
+        repo_id="",
         device=device,
     )
 
-    batch = trainer.loader.get_batch(1)
+    with capsys.disabled():
+        print("[reflectorch][test] loaded model via EasyInferenceModel")
 
-    curve_unscaled = trainer.loader.curves_scaler.restore(batch["scaled_noisy_curves"][0]).detach().cpu().numpy()
-    q_values = batch["q_values"][0].detach().cpu().numpy()
+    batch = cast(dict[str, Any], trainer.loader.get_batch(1))
 
-    params_obj = batch["params"]
+    scaled_noisy_curves = cast(torch.Tensor, batch["scaled_noisy_curves"])
+    q_values_t = cast(torch.Tensor, batch["q_values"])
+
+    curve_unscaled = trainer.loader.curves_scaler.restore(scaled_noisy_curves[0]).detach().cpu().numpy()
+    q_values = q_values_t[0].detach().cpu().numpy()
+
+    params_obj = cast(Any, batch["params"])
     min_b = params_obj.min_bounds[0].detach().cpu().numpy()
     max_b = params_obj.max_bounds[0].detach().cpu().numpy()
     prior_bounds = np.stack([min_b, max_b], axis=-1)
@@ -189,7 +223,7 @@ def test_nf_train_save_load_and_sample(tmp_path: Path):
         q_values=q_values,
         prior_bounds=prior_bounds,
         clip_prediction=True,
-        q_resolution=None,
+        q_resolution=0.1,
         calc_sampled_curves=False,
         enable_importance_sampling=False,
     )
@@ -199,7 +233,9 @@ def test_nf_train_save_load_and_sample(tmp_path: Path):
     assert arr.shape == (16, 7)
     assert np.isfinite(arr).all()
 
-    # Samples should be within the per-curve subprior bounds (up to numerical tolerance).
+    # `clip_prediction=True` clamps to the sampler's global bounds.
     eps = 1e-6
-    assert np.all(arr >= min_b[None, :] - eps)
-    assert np.all(arr <= max_b[None, :] + eps)
+    global_min = trainer.loader.prior_sampler.min_bounds.squeeze(-1).detach().cpu().numpy()
+    global_max = trainer.loader.prior_sampler.max_bounds.squeeze(-1).detach().cpu().numpy()
+    assert np.all(arr >= global_min[None, :] - eps)
+    assert np.all(arr <= global_max[None, :] + eps)
