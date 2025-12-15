@@ -47,4 +47,6 @@ tensorboard_runs
 nfref/
 nfref_py310/
 
+# Data
 1/
+dataset/
