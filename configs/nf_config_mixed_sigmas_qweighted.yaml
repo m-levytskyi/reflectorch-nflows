@@ -1,0 +1,153 @@
+general:
+  name: nf_config_mixed_sigmas_qweighted
+  root_dir: null
+
+dset:
+  cls: MixedReflectivityDataLoader
+  kwargs:
+    # Path containing pairs like:
+    #   <id>_experimental_curve.dat
+    #   <id>_model.txt
+    # Replace with your folder path containing pairs like:
+    #   <id>_experimental_curve.dat
+    #   <id>_model.txt
+    # Default points at bundled sample fixtures.
+    data_dir: "dataset/train"
+    curve_glob: "*_experimental_curve.dat"
+    curve_suffix: "_experimental_curve.dat"
+    model_suffix: "_model.txt"
+
+    # Use your requested fixed values
+    q_resolution: 0.1         # dq/q = 10%
+    background: 5.0e-7        # 0.5 x 10^-6
+
+    # Blend ratio (experimental share of each batch)
+    mix_fraction: 0.5
+    
+    # IMPORTANT: Required for synthetic sigma transformation
+    synthetic_kwargs:
+      calc_denoised_curves: true
+
+  prior_sampler:
+    cls: SubpriorParametricSampler
+    kwargs:
+      param_ranges:
+        thicknesses: [1., 1500.]
+        roughnesses: [0., 60.]
+        slds: [-8., 16.]
+        r_scale: [0.9, 1.1]
+        log10_background: [-10.0, -4.0]
+      bound_width_ranges:
+        thicknesses: [1.0e-2, 1500.]
+        roughnesses: [1.0e-2, 60.]
+        slds: [1.0e-2, 24.]
+        r_scale: [1.0e-3, 0.2]
+        log10_background: [1.0e-2, 6.0]
+      shift_param_config:
+        r_scale: true
+        log10_background: true
+      model_name: standard_model
+      max_num_layers: 1
+      max_total_thickness: 1500
+      constrained_roughness: true
+      max_thickness_share: 0.5
+      logdist: false
+      scale_params_by_ranges: false
+      scaled_range: [-1., 1.]
+      device: 'cuda'
+
+  # Fixed q grid (required for efficient experimental loading)
+  q_generator:
+    cls: ConstantQ
+    kwargs:
+      q: [0.007, 0.284, 256]
+      device: 'cuda'
+
+  intensity_noise:
+    cls: GaussianExpIntensityNoise
+    kwargs:
+      relative_errors: [0.01, 0.3] #dR/R range
+      add_to_context: true
+
+  smearing:
+    cls: Smearing
+    kwargs:
+      sigma_range: [0.01, 0.12]
+      gauss_num: 17
+      share_smeared: 1.0
+
+  # NEW: Q-weighted curve scaler (R' = R * Q^-alpha)
+  curves_scaler:
+    cls: QWeightedCurvesScaler
+    kwargs:
+      alpha: 2.0
+
+  # NEW: Q-weighted sigma scaler (dR' = dR * Q^-beta / (R * ln(10)))
+  sigma_scaler:
+    cls: QWeightedSigmaScaler
+    kwargs:
+      beta: 3.0
+
+model:
+  network:
+    cls: NFNetwork
+    pretrained_name: null
+    device: 'cuda'
+    kwargs:
+      dim_theta: 7
+      dim_conditioning_params: 1
+      prior_bounds_input: true
+      embedding_net_type: 'conv'
+      embedding_net_kwargs:
+        in_channels: 3  # R + Q + sigma (when train_with_q_input=True and train_with_sigmas=True)
+        hidden_channels: [32, 64, 128, 256, 512]
+        kernel_size: 3
+        dim_embedding: 512
+        dim_avpool: 8
+        use_batch_norm: true
+        use_se: false
+        activation: 'gelu'
+      pretrained_embedding_net: null
+      transform_net_kwargs:
+        hidden_features: 256
+        num_blocks: 3
+        activation: 'lrelu'
+        use_batch_norm: false
+        use_layer_norm: true
+      flow_kwargs:
+        num_layers: 40
+        tail_bound: 10.0
+        tails: 'linear'
+        num_bins: 8
+        use_batch_norm_transform: true
+        use_lu: false
+
+training:
+  trainer_cls: NFlowTrainer
+  trainer_kwargs:
+    train_with_bounds: true
+    train_with_q_input: true
+    train_with_sigmas: true  # Using Q-weighted sigmas for loss weighting
+    condition_on_q_resolutions: true
+
+    optim_kwargs:
+      betas: [0.9, 0.999]
+      weight_decay: 0.0005
+
+  num_iterations: 300000
+  batch_size: 2048
+  lr: 1.0e-4
+  grad_accumulation_steps: 1
+  clip_grad_norm_max: 1.0
+  update_tqdm_freq: 1
+  optimizer: AdamW
+  callbacks:
+    save_best_model:
+      enable: true
+      freq: 500
+    lr_scheduler:
+      cls: CosineAnnealingWithWarmup
+      kwargs:
+        min_lr: 1.0e-6
+        warmup_iters: 500
+        total_iters: 300000
