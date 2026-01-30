@@ -322,6 +322,7 @@ def init_dset(config: dict):
     intensity_noise = init_from_conf(config['intensity_noise'])
     q_generator = init_from_conf(config['q_generator'])
     curves_scaler = init_from_conf(config['curves_scaler']) if 'curves_scaler' in config else None
+    sigma_scaler = init_from_conf(config['sigma_scaler']) if 'sigma_scaler' in config else None
     smearing = init_from_conf(config['smearing']) if 'smearing' in config else None
     q_noise = init_from_conf(config['q_noise']) if 'q_noise' in config else None
 
@@ -330,6 +331,7 @@ def init_dset(config: dict):
         prior_sampler=prior_sampler,
         intensity_noise=intensity_noise,
         curves_scaler=curves_scaler,
+        sigma_scaler=sigma_scaler,
         smearing=smearing,
         q_noise=q_noise,
         **dset_kwargs,

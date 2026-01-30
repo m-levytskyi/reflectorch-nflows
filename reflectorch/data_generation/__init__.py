@@ -1,4 +1,4 @@
-from reflectorch.data_generation.dataset import BasicDataset, BATCH_DATA_TYPE
+from reflectorch.data_generation.dataset import BasicDataset, QWeightedDataset, BATCH_DATA_TYPE
 from reflectorch.data_generation.priors import (
     Params,
     PriorSampler,
@@ -49,6 +49,8 @@ from reflectorch.data_generation.scale_curves import (
     CurvesScaler,
     LogAffineCurvesScaler,
     MeanNormalizationCurvesScaler,
+    QWeightedCurvesScaler,
+    QWeightedSigmaScaler,
 )
 from reflectorch.data_generation.utils import (
     get_reversed_params,
@@ -73,6 +75,7 @@ __all__ = [
     "PriorSampler",
     "BasicPriorSampler",
     "BasicDataset",
+    "QWeightedDataset",
     "ProcessData",
     "ProcessPipeline",
     "QGenerator",
@@ -92,6 +95,8 @@ __all__ = [
     "QSystematicShiftGenerator",
     "LogAffineCurvesScaler",
     "MeanNormalizationCurvesScaler",
+    "QWeightedCurvesScaler",
+    "QWeightedSigmaScaler",
     "get_reversed_params",
     "get_density_profiles",
     "logdist_sampler",

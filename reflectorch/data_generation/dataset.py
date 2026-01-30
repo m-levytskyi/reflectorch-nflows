@@ -95,7 +95,7 @@ class BasicDataset(object):
         if self.intensity_noise:
             noisy_curves = self.intensity_noise(noisy_curves, batch_data)
 
-        scaled_noisy_curves = self.curves_scaler.scale(noisy_curves)
+        scaled_noisy_curves = self.curves_scaler.scale(noisy_curves, q_values)
         batch_data['scaled_noisy_curves'] = scaled_noisy_curves
 
         is_finite = torch.all(torch.isfinite(scaled_noisy_curves), -1)
@@ -136,6 +136,45 @@ def _insert_batch_data(tgt_batch_data, add_batch_data, indices):
             value[indices] = add_batch_data[key]
         else:
             warnings.warn(f'Ignore {key} while merging batch_data.')
+
+
+class QWeightedDataset(BasicDataset):
+    """Dataset with Q-weighted sigma transformation applied in update_batch_data().
+    
+    This subclass applies custom transformations to both curves and sigmas using Q-dependent scaling:
+    - Curves: R' = R * Q^(-alpha)  
+    - Sigmas: dR' = dR * Q^(-beta) / (R * ln(10))
+    
+    Args:
+        sigma_scaler (QWeightedSigmaScaler, optional): the sigma scaler for transforming dR values.
+                                                        If None, no sigma transformation is applied.
+        **kwargs: arguments passed to BasicDataset
+    """
+    def __init__(self, sigma_scaler=None, **kwargs):
+        super().__init__(**kwargs)
+        self.sigma_scaler = sigma_scaler
+    
+    def update_batch_data(self, batch_data: BATCH_DATA_TYPE) -> None:
+        """Apply sigma transformation if sigmas are present in batch_data context
+        
+        Transforms context['sigmas'] -> batch_data['scaled_sigmas'] using the Q-weighted sigma scaler.
+        Requires 'curves' (unscaled R) and 'q_values' to be present in batch_data.
+        """
+        if self.sigma_scaler is not None and 'sigmas' in batch_data:
+            # Get unscaled curves - either from calc_denoised_curves or need to recompute
+            if 'curves' in batch_data:
+                curves = batch_data['curves']
+            else:
+                # If curves not available, we can't apply the sigma transformation
+                warnings.warn("Sigma scaler requires 'curves' in batch_data. Set calc_denoised_curves=True.")
+                return
+            
+            sigmas = batch_data['sigmas']
+            q_values = batch_data['q_values']
+            
+            # Apply sigma transformation: dR' = dR * Q^(-beta) / (R * ln(10))
+            scaled_sigmas = self.sigma_scaler.scale(sigmas, curves, q_values)
+            batch_data['scaled_sigmas'] = scaled_sigmas
 
 
 if __name__ == '__main__':
@@ -189,7 +228,8 @@ if __name__ == '__main__':
 
     scaled_noisy_curves = batch_data['scaled_noisy_curves']
     scaled_curves = dataset.curves_scaler.scale(
-        batch_data['params'].reflectivity(q_generator.q)
+        batch_data['params'].reflectivity(q_generator.q),
+        q_generator.q
     )
 
     try:

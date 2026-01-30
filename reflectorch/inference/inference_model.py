@@ -333,7 +333,6 @@ class EasyInferenceModel(object):
         if not isinstance(self.trainer, PointEstimatorTrainer):
             raise RuntimeError("`predict()` is only supported for models trained with `PointEstimatorTrainer`.")
 
-        scaled_curve = self._scale_curve(reflectivity_curve)
         prior_bounds = np.array(prior_bounds)
 
         if ambient_sld:
@@ -346,10 +345,13 @@ class EasyInferenceModel(object):
             if torch.is_tensor(q_values) and q_values.dim() == 1:
                 q_values = q_values[None, :]
         else:
-            q_values = torch.atleast_2d(to_t(q_values)).to(scaled_curve)
+            q_values = torch.atleast_2d(to_t(q_values))
+        
+        scaled_curve = self._scale_curve(reflectivity_curve, q_values.to(self.device) if q_values is not None else None)
 
         scaled_q_values = self.trainer.loader.q_generator.scale_q(q_values).to(torch.float32) if self.trainer.train_with_q_input else None
         
+        q_resolution_tensor = None
         if q_resolution is not None:
             q_resolution_tensor = torch.atleast_2d(torch.as_tensor(q_resolution)).to(scaled_curve)
             if isinstance(q_resolution, float):
@@ -361,7 +363,6 @@ class EasyInferenceModel(object):
             if polishing_kwargs_reflectivity is None:
                 polishing_kwargs_reflectivity = {'dq': q_resolution}
         else:
-            q_resolution_tensor = None
             scaled_conditioning_params = None
 
         if key_padding_mask is not None:
@@ -569,36 +570,139 @@ class EasyInferenceModel(object):
         if not isinstance(self.trainer, NFlowTrainer):
             raise RuntimeError("`sample()` is only supported for models trained with `NFlowTrainer`.")
 
-        scaled_curve = self._scale_curve(reflectivity_curve)
+        print(f"\n{'#'*80}")
+        print(f"### STARTING INFERENCE SAMPLE() METHOD ###")
+        print(f"{'#'*80}\n")
+
         prior_bounds = np.array(prior_bounds)
+        print(f"[sample] Prior bounds shape: {prior_bounds.shape}")
 
         if ambient_sld:
             sld_indices = self._shift_slds_by_ambient(prior_bounds, ambient_sld)
 
         scaled_prior_bounds = self._scale_prior_bounds(prior_bounds)
+        print(f"[sample] Scaled prior bounds dtype: {scaled_prior_bounds.dtype}, shape: {scaled_prior_bounds.shape}")
+
+        print(f"\n[sample] ========== PREPROCESSING INPUTS ==========\n")
+        
+        if isinstance(self.trainer.loader.q_generator, ConstantQ):
+            q_values = self.trainer.loader.q_generator.q
+            if torch.is_tensor(q_values) and q_values.dim() == 1:
+                q_values = q_values[None, :]
+            print(f"[sample] Using ConstantQ generator")
+        else:
+            print(f"[sample] Input reflectivity_curve type: {type(reflectivity_curve)}")
+            if isinstance(reflectivity_curve, np.ndarray):
+                print(f"  - numpy dtype: {reflectivity_curve.dtype}, shape: {reflectivity_curve.shape}")
+                print(f"  - range: [{reflectivity_curve.min():.6e}, {reflectivity_curve.max():.6e}]")
+            
+            print(f"[sample] Input q_values type: {type(q_values)}")
+            if isinstance(q_values, np.ndarray):
+                print(f"  - numpy dtype: {q_values.dtype}, shape: {q_values.shape}")
+                print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
+            
+            q_values = torch.atleast_2d(to_t(q_values)).float()  # Ensure float32
+            print(f"[sample] q_values converted to tensor:")
+            print(f"  - dtype: {q_values.dtype}, shape: {q_values.shape}")
+            print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
+        
+        print(f"\n[sample] Calling _scale_curve()...")
+        scaled_curve = self._scale_curve(reflectivity_curve, q_values.to(self.device) if q_values is not None else None)
+        print(f"[sample] scaled_curve output:")
+        print(f"  - dtype: {scaled_curve.dtype}, shape: {scaled_curve.shape}")
+        print(f"  - range: [{scaled_curve.min():.6e}, {scaled_curve.max():.6e}]")
 
         if isinstance(self.trainer.loader.q_generator, ConstantQ):
             q_values = self.trainer.loader.q_generator.q
             if torch.is_tensor(q_values) and q_values.dim() == 1:
                 q_values = q_values[None, :]
         else:
-            q_values = torch.atleast_2d(to_t(q_values)).to(scaled_curve)
+            q_values = torch.atleast_2d(to_t(q_values)).float().to(scaled_curve)  # Ensure float32
 
-        scaled_q_values = self.trainer.loader.q_generator.scale_q(q_values).to(torch.float32) if self.trainer.train_with_q_input else None
-        scaled_sigmas = self.trainer.loader.curves_scaler.scale(sigmas) if self.trainer.train_with_sigmas else None
+        if self.trainer.train_with_q_input:
+            print(f"\n[sample] Computing scaled_q_values (train_with_q_input=True)...")
+            scaled_q_values = self.trainer.loader.q_generator.scale_q(q_values)
+            print(f"  - Before dtype conversion: {scaled_q_values.dtype}")
+            # Aggressively ensure float32 dtype
+            scaled_q_values = scaled_q_values.to(dtype=torch.float32, device=scaled_curve.device)
+            print(f"  - After dtype conversion: {scaled_q_values.dtype}")
+            print(f"  - shape: {scaled_q_values.shape}")
+            print(f"  - range: [{scaled_q_values.min():.6e}, {scaled_q_values.max():.6e}]")
+        else:
+            scaled_q_values = None
+            print(f"\n[sample] scaled_q_values = None (train_with_q_input=False)")
         
-        if q_resolution is not None:
-            q_resolution_tensor = torch.atleast_2d(torch.as_tensor(q_resolution)).to(scaled_curve)
-            if isinstance(q_resolution, float):
-                unscaled_q_resolutions = q_resolution_tensor
+        # Use sigma_scaler if available (for Q-weighted sigma transformation), otherwise fall back to curves_scaler
+        if self.trainer.train_with_sigmas and sigmas is not None:
+            print(f"\n[sample] Processing sigmas (train_with_sigmas=True)...")
+            print(f"[sample] Input sigmas type: {type(sigmas)}")
+            if isinstance(sigmas, np.ndarray):
+                print(f"  - numpy dtype: {sigmas.dtype}, shape: {sigmas.shape}")
+                print(f"  - range: [{sigmas.min():.6e}, {sigmas.max():.6e}]")
+            
+            # Ensure sigmas is a float32 tensor
+            sigmas = torch.atleast_2d(to_t(sigmas)).float().to(scaled_curve)
+            print(f"[sample] sigmas converted to tensor:")
+            print(f"  - dtype: {sigmas.dtype}, shape: {sigmas.shape}")
+            print(f"  - range: [{sigmas.min():.6e}, {sigmas.max():.6e}]")
+            
+            if hasattr(self.trainer.loader, 'sigma_scaler') and self.trainer.loader.sigma_scaler is not None:
+                print(f"[sample] Using sigma_scaler (Q-weighted transformation)...")
+                # Q-weighted sigma scaler requires unscaled curves
+                unscaled_curve = torch.atleast_2d(to_t(reflectivity_curve)).float().to(self.device)
+                print(f"[sample] Passing unscaled_curve to sigma_scaler:")
+                print(f"  - dtype: {unscaled_curve.dtype}, shape: {unscaled_curve.shape}")
+                print(f"  - range: [{unscaled_curve.min():.6e}, {unscaled_curve.max():.6e}]")
+                scaled_sigmas = self.trainer.loader.sigma_scaler.scale(sigmas, unscaled_curve, q_values)
             else:
-                unscaled_q_resolutions = (q_resolution_tensor / q_values).nanmean(dim=-1, keepdim=True)
+                print(f"[sample] Using curves_scaler for sigmas (standard transformation)...")
+                scaled_sigmas = self.trainer.loader.curves_scaler.scale(sigmas, q_values)
+            
+            print(f"[sample] scaled_sigmas output:")
+            print(f"  - dtype: {scaled_sigmas.dtype}, shape: {scaled_sigmas.shape}")
+            print(f"  - range: [{scaled_sigmas.min():.6e}, {scaled_sigmas.max():.6e}]")
+        else:
+            scaled_sigmas = None
+            print(f"\n[sample] scaled_sigmas = None (train_with_sigmas={self.trainer.train_with_sigmas}, sigmas={'provided' if sigmas is not None else 'None'})")
+        
+        q_resolution_tensor = None
+        if q_resolution is not None:
+            if isinstance(q_resolution, (float, int)):
+                # Scalar resolution: create float32 tensor directly
+                q_resolution_tensor = torch.tensor([[q_resolution]], dtype=torch.float32, device=self.device)
+                unscaled_q_resolutions = q_resolution_tensor
+                print(f"[DEBUG] q_resolution is scalar: {q_resolution}")
+            else:
+                # Array resolution: explicitly convert to float32
+                if isinstance(q_resolution, np.ndarray):
+                    q_resolution_tensor = torch.from_numpy(q_resolution).float().to(self.device)
+                    print(f"[DEBUG] Converted q_resolution from numpy ({q_resolution.dtype}) to tensor ({q_resolution_tensor.dtype})")
+                else:
+                    q_resolution_tensor = q_resolution.float().to(self.device)
+                    print(f"[DEBUG] Converted q_resolution tensor to float32: {q_resolution_tensor.dtype}")
+                
+                q_resolution_tensor = torch.atleast_2d(q_resolution_tensor)
+                print(f"[DEBUG] q_values dtype before division: {q_values.dtype}")
+                
+                # Compute mean resolution (both tensors are now float32)
+                unscaled_q_resolutions = (q_resolution_tensor / q_values.float()).nanmean(dim=-1, keepdim=True)
+                print(f"[DEBUG] unscaled_q_resolutions dtype: {unscaled_q_resolutions.dtype}")
+            
+            # Scale the resolutions if needed
             scaled_q_resolutions = self.trainer.loader.smearing.scale_resolutions(unscaled_q_resolutions) if self.trainer.condition_on_q_resolutions else None
             scaled_conditioning_params = scaled_q_resolutions
+            
+            if scaled_conditioning_params is not None:
+                print(f"[DEBUG] scaled_q_resolutions dtype: {scaled_q_resolutions.dtype}")
+                # Final safety check: ensure float32
+                scaled_conditioning_params = scaled_conditioning_params.float()
+                print(f"[DEBUG] FINAL scaled_conditioning_params dtype: {scaled_conditioning_params.dtype}")
+            else:
+                print(f"[DEBUG] scaled_conditioning_params is None (condition_on_q_resolutions={self.trainer.condition_on_q_resolutions})")
+            
             if polishing_kwargs_reflectivity is None:
                 polishing_kwargs_reflectivity = {'dq': q_resolution}
         else:
-            q_resolution_tensor = None
             scaled_conditioning_params = None
         
         if key_padding_mask is not None:
@@ -840,11 +944,11 @@ class EasyInferenceModel(object):
 
         return polished_params_dict
     
-    def _scale_curve(self, curve: Union[np.ndarray, Tensor]):
+    def _scale_curve(self, curve: Union[np.ndarray, Tensor], q_values: Tensor = None):
         if not isinstance(curve, Tensor):
             curve = torch.from_numpy(curve).float()
         curve = curve.unsqueeze(0).to(self.device)
-        scaled_curve = self.trainer.loader.curves_scaler.scale(curve)
+        scaled_curve = self.trainer.loader.curves_scaler.scale(curve, q_values)
         return scaled_curve
     
     def _scale_prior_bounds(self, prior_bounds: List[Tuple]):
@@ -1107,7 +1211,9 @@ class EasyInferenceModel(object):
 
         assert shifted_curves.shape == (num, q.shape[0])
 
-        scaled_curves = self.trainer.loader.curves_scaler.scale(shifted_curves)
+        # Expand q values to match shifted curves batch size
+        q_batch = q.unsqueeze(0).expand(num, -1)
+        scaled_curves = self.trainer.loader.curves_scaler.scale(shifted_curves, q_batch)
         scaled_prior_bounds = torch.atleast_2d(scaled_bounds).expand(scaled_curves.shape[0], -1)
 
         with torch.no_grad():
@@ -1572,7 +1678,9 @@ class InferenceModel(object):
 
         assert shifted_curves.shape == (num, q.shape[0])
 
-        scaled_curves = self.trainer.loader.curves_scaler.scale(shifted_curves)
+        # Expand q values to match shifted curves batch size
+        q_batch = q.unsqueeze(0).expand(num, -1)
+        scaled_curves = self.trainer.loader.curves_scaler.scale(shifted_curves, q_batch)
         context = torch.cat([scaled_curves, torch.atleast_2d(scaled_bounds).expand(scaled_curves.shape[0], -1)], -1)
 
         with torch.no_grad():
@@ -1643,11 +1751,11 @@ class InferenceModel(object):
         scaled_input = torch.cat([scaled_curve, scaled_bounds], -1)
         return scaled_input, min_bounds, max_bounds
 
-    def _scale_curve(self, curve: np.ndarray or Tensor):
+    def _scale_curve(self, curve: np.ndarray or Tensor, q_values: Tensor = None):
         if not isinstance(curve, Tensor):
             curve = torch.from_numpy(curve).float()
         curve = torch.atleast_2d(curve).to(self.q)
-        scaled_curve = self.trainer.loader.curves_scaler.scale(curve)
+        scaled_curve = self.trainer.loader.curves_scaler.scale(curve, q_values)
         return scaled_curve.float()
 
     def _scale_priors(self, priors: np.ndarray or Tensor, q_ratio: float = 1.):
