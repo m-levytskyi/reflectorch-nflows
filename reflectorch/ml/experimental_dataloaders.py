@@ -10,7 +10,7 @@ import torch
 from reflectorch.data_generation.priors.parametric_subpriors import BasicParams, SubpriorParametricSampler
 from reflectorch.inference.preprocess_exp.interpolation import interp_reflectivity
 from reflectorch.ml.basic_trainer import DataLoader
-from reflectorch.ml.dataloaders import ReflectivityDataLoader
+from reflectorch.ml.dataloaders import ReflectivityDataLoader, QWeightedReflectivityDataLoader
 
 __all__ = [
     "ExperimentalReflectivityDataLoader",
@@ -22,6 +22,7 @@ __all__ = [
 class ExperimentalSample:
     q: np.ndarray  # shape [N]
     r: np.ndarray  # shape [N]
+    dr: Optional[np.ndarray]  # shape [N], may be None if not in file
     params_true: torch.Tensor  # shape [P] on CPU
 
 
@@ -183,6 +184,7 @@ class ExperimentalReflectivityDataLoader(DataLoader):
         prior_sampler: SubpriorParametricSampler,
         intensity_noise=None,
         curves_scaler=None,
+        sigma_scaler=None,
         smearing=None,
         q_noise=None,
         data_dir: str | Path,
@@ -202,6 +204,7 @@ class ExperimentalReflectivityDataLoader(DataLoader):
         self.prior_sampler = prior_sampler
         self.intensity_noise = intensity_noise
         self.curves_scaler = curves_scaler
+        self.sigma_scaler = sigma_scaler
         self.smearing = smearing
         self.q_noise = q_noise
 
@@ -231,6 +234,7 @@ class ExperimentalReflectivityDataLoader(DataLoader):
 
         self._samples: List[ExperimentalSample] = []
         self._interp_curves: Optional[torch.Tensor] = None  # [N, Nq] on CPU
+        self._interp_sigmas: Optional[torch.Tensor] = None  # [N, Nq] on CPU, may be None
         self._params_true: Optional[torch.Tensor] = None  # [N, P] on CPU
 
         self._load_all()
@@ -265,7 +269,7 @@ class ExperimentalReflectivityDataLoader(DataLoader):
             if not model_path.is_file():
                 raise FileNotFoundError(f"Missing model file for {curve_path}: expected {model_path}")
 
-            q, r, _, _ = _read_curve_dat(curve_path)
+            q, r, dr, _ = _read_curve_dat(curve_path)
 
             thicknesses, roughnesses, slds = _read_standard_model_txt(
                 model_path,
@@ -303,7 +307,7 @@ class ExperimentalReflectivityDataLoader(DataLoader):
 
             params_list.append(full_params)
             self._samples.append(
-                ExperimentalSample(q=q, r=r, params_true=full_params)
+                ExperimentalSample(q=q, r=r, dr=dr, params_true=full_params)
             )
 
         self._params_true = torch.stack(params_list, dim=0)
@@ -318,6 +322,9 @@ class ExperimentalReflectivityDataLoader(DataLoader):
 
     def _precompute_interpolated_curves(self) -> None:
         curves: List[np.ndarray] = []
+        sigmas: List[np.ndarray] = []
+        has_any_dr = False
+        
         for s in self._samples:
             r_interp = interp_reflectivity(
                 self._q_grid_np,
@@ -327,8 +334,29 @@ class ExperimentalReflectivityDataLoader(DataLoader):
                 logspace=self.interpolation_logspace_q,
             ).astype(np.float32)
             curves.append(r_interp)
+            
+            # Interpolate dr values if present
+            if s.dr is not None:
+                has_any_dr = True
+                dr_interp = interp_reflectivity(
+                    self._q_grid_np,
+                    s.q,
+                    s.dr,
+                    min_value=self.min_curve_value,
+                    logspace=self.interpolation_logspace_q,
+                ).astype(np.float32)
+                sigmas.append(dr_interp)
+            else:
+                # Placeholder for samples without dR
+                sigmas.append(np.zeros_like(r_interp))
 
         self._interp_curves = torch.tensor(np.stack(curves, axis=0), dtype=torch.float32)
+        
+        # Only store sigmas if at least one sample has dR values
+        if has_any_dr:
+            self._interp_sigmas = torch.tensor(np.stack(sigmas, axis=0), dtype=torch.float32)
+        else:
+            self._interp_sigmas = None
 
     def _sample_bounds(self, params: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Sample subprior bounds around provided params.
@@ -376,9 +404,16 @@ class ExperimentalReflectivityDataLoader(DataLoader):
         curves = self._interp_curves[idx].to(device=device)
 
         if self.curves_scaler is not None:
-            scaled_noisy_curves = self.curves_scaler.scale(curves)
+            scaled_noisy_curves = self.curves_scaler.scale(curves, q_values)
         else:
             scaled_noisy_curves = curves
+        
+        # Handle sigmas if available
+        scaled_sigmas = None
+        if self._interp_sigmas is not None and self.sigma_scaler is not None:
+            sigmas = self._interp_sigmas[idx].to(device=device)
+            # Apply Q-weighted sigma transformation: dR' = dR * Q^(-beta) / (R * ln(10))
+            scaled_sigmas = self.sigma_scaler.scale(sigmas, curves, q_values)
 
         params = self._params_true[idx].to(device=device)
         min_b, max_b = self._sample_bounds(params)
@@ -395,12 +430,18 @@ class ExperimentalReflectivityDataLoader(DataLoader):
 
         q_resolutions = torch.full((batch_size, 1), self.q_resolution, device=device, dtype=torch.float32)
 
-        return {
+        batch_dict = {
             "q_values": q_values,
             "scaled_noisy_curves": scaled_noisy_curves,
             "scaled_params": scaled_params,
             "q_resolutions": q_resolutions,
         }
+        
+        # Add scaled_sigmas if available
+        if scaled_sigmas is not None:
+            batch_dict["scaled_sigmas"] = scaled_sigmas
+        
+        return batch_dict
 
 
 class MixedReflectivityDataLoader(DataLoader):
@@ -416,6 +457,7 @@ class MixedReflectivityDataLoader(DataLoader):
         prior_sampler,
         intensity_noise=None,
         curves_scaler=None,
+        sigma_scaler=None,
         smearing=None,
         q_noise=None,
         mix_fraction: float = 0.5,
@@ -439,6 +481,7 @@ class MixedReflectivityDataLoader(DataLoader):
         self.prior_sampler = prior_sampler
         self.intensity_noise = intensity_noise
         self.curves_scaler = curves_scaler
+        self.sigma_scaler = sigma_scaler
         self.smearing = smearing
         self.q_noise = q_noise
 
@@ -451,6 +494,7 @@ class MixedReflectivityDataLoader(DataLoader):
             prior_sampler=prior_sampler,
             intensity_noise=intensity_noise,
             curves_scaler=curves_scaler,
+            sigma_scaler=sigma_scaler,
             smearing=smearing,
             q_noise=q_noise,
             data_dir=data_dir,
@@ -468,15 +512,29 @@ class MixedReflectivityDataLoader(DataLoader):
         )
 
         synthetic_kwargs = synthetic_kwargs or {}
-        self.synthetic = ReflectivityDataLoader(
-            q_generator=q_generator,
-            prior_sampler=prior_sampler,
-            intensity_noise=intensity_noise,
-            curves_scaler=curves_scaler,
-            smearing=smearing,
-            q_noise=q_noise,
-            **synthetic_kwargs,
-        )
+        
+        # Use QWeightedReflectivityDataLoader if sigma_scaler is provided for consistency
+        if sigma_scaler is not None:
+            self.synthetic = QWeightedReflectivityDataLoader(
+                q_generator=q_generator,
+                prior_sampler=prior_sampler,
+                intensity_noise=intensity_noise,
+                curves_scaler=curves_scaler,
+                sigma_scaler=sigma_scaler,
+                smearing=smearing,
+                q_noise=q_noise,
+                **synthetic_kwargs,
+            )
+        else:
+            self.synthetic = ReflectivityDataLoader(
+                q_generator=q_generator,
+                prior_sampler=prior_sampler,
+                intensity_noise=intensity_noise,
+                curves_scaler=curves_scaler,
+                smearing=smearing,
+                q_noise=q_noise,
+                **synthetic_kwargs,
+            )
 
     def get_batch(self, batch_size: int) -> Dict[str, torch.Tensor]:
         n_exp = int(round(batch_size * self.mix_fraction))
