@@ -44,7 +44,7 @@ documentation/_build/*
 tensorboard_runs
 
 #Virtual Environments
-nfref/
+nfref_noneditable/
 nfref_py310/
 
 # Data
