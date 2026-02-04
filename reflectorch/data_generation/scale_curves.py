@@ -361,3 +361,78 @@ class QWeightedSigmaScaler:
         
         # Ensure output is float32
         return result.float()
+
+
+class MeanConditionedCurvesScaler(CurvesScaler):
+    """Center reflectivity curves by subtracting per-sample mean.
+    
+    Transformation: R' = R - mean(R)
+    
+    This makes the model invariant to absolute intensity offsets while
+    preserving the relative shape of the curve. Each sample is centered
+    independently based on its own mean value.
+    
+    The transformation is Q-independent and can be combined with other
+    scalers (e.g., QWeightedCurvesScaler) in sequence.
+    
+    Example:
+        >>> scaler = MeanConditionedCurvesScaler()
+        >>> R = torch.tensor([[1.0, 0.8, 0.6, 0.4]])  # Mean = 0.7
+        >>> R_centered = scaler.scale(R)
+        >>> # Result: [[0.3, 0.1, -0.1, -0.3]]
+    """
+    
+    def __init__(self, eps: float = 1e-10):
+        """Initialize mean conditioning scaler.
+        
+        Args:
+            eps: Small constant for numerical stability (not currently used,
+                 kept for API consistency with other scalers)
+        """
+        self.eps = eps
+    
+    def scale(self, curves: Tensor, q_values: Tensor = None) -> Tensor:
+        """Center curves by subtracting per-curve mean.
+        
+        Args:
+            curves: [B, Nq] reflectivity curves
+            q_values: Optional [B, Nq] Q values (not used, kept for API compatibility)
+            
+        Returns:
+            [B, Nq] mean-centered curves where each row has mean ≈ 0
+            
+        Note:
+            The q_values parameter is ignored but kept for compatibility with
+            the CurvesScaler interface and Q-weighted scalers.
+        """
+        # Compute mean along Q dimension (dim=-1)
+        curve_means = curves.mean(dim=-1, keepdim=True)  # [B, 1]
+        
+        # Subtract mean from each curve
+        return curves - curve_means
+    
+    def restore(self, scaled_curves: Tensor, q_values: Tensor = None, 
+                original_mean: Tensor = None) -> Tensor:
+        """Restore original curves by adding back the mean.
+        
+        Args:
+            scaled_curves: [B, Nq] mean-centered curves
+            q_values: Optional [B, Nq] Q values (not used)
+            original_mean: [B, 1] original mean values (required for restoration)
+            
+        Returns:
+            [B, Nq] restored curves
+            
+        Note:
+            Exact restoration requires storing the original mean values during
+            the scale() operation. If original_mean is not provided, the curves
+            cannot be restored to their original scale.
+            
+            In practice, this method is rarely used as the model predicts in
+            the mean-centered space and predictions are evaluated there.
+        """
+        if original_mean is not None:
+            return scaled_curves + original_mean
+        else:
+            # Cannot restore without original mean - return as-is
+            return scaled_curves
