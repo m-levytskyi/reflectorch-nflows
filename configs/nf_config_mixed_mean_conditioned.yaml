@@ -84,7 +84,7 @@ model:
     device: 'cuda'
     kwargs:
       dim_theta: 7
-      dim_conditioning_params: 2
+      dim_conditioning_params: 1
       prior_bounds_input: true
       embedding_net_type: 'conv'
       embedding_net_kwargs:
@@ -116,7 +116,7 @@ training:
   trainer_kwargs:
     train_with_bounds: true
     train_with_q_input: true
-    train_with_sigmas: true #can be set to true to add dR as a training input // increase dim_conditioning_params accordingly
+    train_with_sigmas: false  # No sigma_scaler in config, so no sigmas available
     condition_on_q_resolutions: true
 
     optim_kwargs:
