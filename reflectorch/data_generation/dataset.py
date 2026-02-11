@@ -27,6 +27,8 @@ class BasicDataset(object):
         calc_denoised_curves (bool, optional): whether to add the curves without noise to the dictionary. Defaults to False.
         calc_nonsmeared_curves (bool, optional): whether to add the curves without smearing to the dictionary (only relevant when smearing is applied). Defaults to False.
         smearing (Smearing, optional): curve smearing generator. Defaults to None.
+        sigma_scaler (optional): sigma scaler for Q-weighted transformations. Defaults to None. 
+                                 Accepted for backward compatibility but not used in BasicDataset.
     """
     def __init__(self,
                  q_generator: QGenerator,
@@ -37,6 +39,7 @@ class BasicDataset(object):
                  calc_denoised_curves: bool = False,
                  calc_nonsmeared_curves: bool = False,
                  smearing: Smearing = None,
+                 sigma_scaler = None,
                  ):
         self.q_generator = q_generator
         self.intensity_noise = intensity_noise
@@ -46,6 +49,7 @@ class BasicDataset(object):
         self.smearing = smearing
         self.calc_denoised_curves = calc_denoised_curves
         self.calc_nonsmeared_curves = calc_nonsmeared_curves
+        # sigma_scaler is accepted but not used in BasicDataset (for backward compatibility)
 
     def update_batch_data(self, batch_data: BATCH_DATA_TYPE) -> None:
         """implement in a subclass to edit batch_data dict inplace"""
