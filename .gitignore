@@ -15,6 +15,7 @@ __pycache__/
 .Python
 venv
 .venv
+.env
 .vscode
 .idea
 env/
@@ -41,11 +42,3 @@ documentation/_build/*
 
 #Other
 tensorboard_runs
-
-#Virtual Environments
-nfref_noneditable/
-nfref_py310/
-
-# Data
-1/
-dataset/
