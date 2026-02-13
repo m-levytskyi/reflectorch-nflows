@@ -140,56 +140,20 @@ class QWeightedCurvesScaler(CurvesScaler):
         if q_values is None:
             raise ValueError("QWeightedCurvesScaler requires q_values parameter")
         
-        print(f"\n{'='*80}")
-        print(f"[QWeightedCurvesScaler.scale] STARTING Q-WEIGHTED CURVE TRANSFORMATION (alpha={self.alpha})")
-        print(f"{'='*80}")
-        
         # Convert to tensors if needed (handles NumPy arrays during inference)
         if isinstance(curves, np.ndarray):
-            print(f"[QWeightedCurvesScaler.scale] INPUT curves: numpy array")
-            print(f"  - dtype: {curves.dtype}")
-            print(f"  - shape: {curves.shape}")
-            print(f"  - range: [{curves.min():.6e}, {curves.max():.6e}]")
-            print(f"  - mean: {curves.mean():.6e}")
             curves = torch.from_numpy(curves).float()
-            print(f"  - Converted to tensor dtype: {curves.dtype}")
         elif isinstance(curves, torch.Tensor):
-            print(f"[QWeightedCurvesScaler.scale] INPUT curves: tensor")
-            print(f"  - dtype: {curves.dtype}")
-            print(f"  - shape: {curves.shape}")
-            print(f"  - range: [{curves.min():.6e}, {curves.max():.6e}]")
-            print(f"  - mean: {curves.mean():.6e}")
             curves = curves.float()
         
         if isinstance(q_values, np.ndarray):
-            print(f"[QWeightedCurvesScaler.scale] INPUT q_values: numpy array")
-            print(f"  - dtype: {q_values.dtype}")
-            print(f"  - shape: {q_values.shape}")
-            print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
             q_values = torch.from_numpy(q_values).float()
-            print(f"  - Converted to tensor dtype: {q_values.dtype}")
         elif isinstance(q_values, torch.Tensor):
-            print(f"[QWeightedCurvesScaler.scale] INPUT q_values: tensor")
-            print(f"  - dtype: {q_values.dtype}")
-            print(f"  - shape: {q_values.shape}")
-            print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
             q_values = q_values.float()
         
         q_weight = q_values ** (-self.alpha)
-        print(f"[QWeightedCurvesScaler.scale] Q-weight (Q^-{self.alpha}):")
-        print(f"  - range: [{q_weight.min():.6e}, {q_weight.max():.6e}]")
-        print(f"  - mean: {q_weight.mean():.6e}")
-        
         result = curves * q_weight
-        result = result.float()
-        
-        print(f"[QWeightedCurvesScaler.scale] OUTPUT (R' = R * Q^-{self.alpha}):")
-        print(f"  - dtype: {result.dtype}")
-        print(f"  - shape: {result.shape}")
-        print(f"  - range: [{result.min():.6e}, {result.max():.6e}]")
-        print(f"  - mean: {result.mean():.6e}")
-        print(f"{'='*80}\n")
-        return result
+        return result.float()
     
     def restore(self, scaled_curves: Tensor, q_values: Tensor = None):
         """restores the physical reflectivity curves from Q-weighted form
@@ -206,7 +170,6 @@ class QWeightedCurvesScaler(CurvesScaler):
         
         # Convert to tensors if needed
         if isinstance(scaled_curves, np.ndarray):
-            print(f"[QWeightedCurvesScaler.restore] Converting scaled_curves from numpy ({scaled_curves.dtype})")
             scaled_curves = torch.from_numpy(scaled_curves).float()
         elif isinstance(scaled_curves, torch.Tensor):
             scaled_curves = scaled_curves.float()
@@ -218,11 +181,7 @@ class QWeightedCurvesScaler(CurvesScaler):
         
         q_weight = q_values ** (-self.alpha)
         result = scaled_curves / q_weight
-        
-        # Ensure output is float32
-        result = result.float()
-        print(f"[QWeightedCurvesScaler.restore] Output dtype: {result.dtype}")
-        return result
+        return result.float()
 
 
 class QWeightedSigmaScaler:
@@ -251,83 +210,27 @@ class QWeightedSigmaScaler:
         Raises:
             ValueError: if curves appear to be already scaled (not physical R values)
         """
-        print(f"\n{'='*80}")
-        print(f"[QWeightedSigmaScaler.scale] STARTING Q-WEIGHTED SIGMA TRANSFORMATION (beta={self.beta})")
-        print(f"{'='*80}")
-        
         # Convert to tensors if needed (handles NumPy arrays during inference)
         if isinstance(sigmas, np.ndarray):
-            print(f"[QWeightedSigmaScaler.scale] INPUT sigmas: numpy array")
-            print(f"  - dtype: {sigmas.dtype}")
-            print(f"  - shape: {sigmas.shape}")
-            print(f"  - range: [{sigmas.min():.6e}, {sigmas.max():.6e}]")
-            print(f"  - mean: {sigmas.mean():.6e}")
             sigmas = torch.from_numpy(sigmas).float()
-            print(f"  - Converted to tensor dtype: {sigmas.dtype}")
         elif isinstance(sigmas, torch.Tensor):
-            print(f"[QWeightedSigmaScaler.scale] INPUT sigmas: tensor")
-            print(f"  - dtype: {sigmas.dtype}")
-            print(f"  - shape: {sigmas.shape}")
-            print(f"  - range: [{sigmas.min():.6e}, {sigmas.max():.6e}]")
-            print(f"  - mean: {sigmas.mean():.6e}")
             sigmas = sigmas.float()
         
         if isinstance(curves, np.ndarray):
-            print(f"[QWeightedSigmaScaler.scale] INPUT curves (unscaled R): numpy array")
-            print(f"  - dtype: {curves.dtype}")
-            print(f"  - shape: {curves.shape}")
-            print(f"  - range: [{curves.min():.6e}, {curves.max():.6e}]")
-            print(f"  - mean: {curves.mean():.6e}")
             curves = torch.from_numpy(curves).float()
-            print(f"  - Converted to tensor dtype: {curves.dtype}")
         elif isinstance(curves, torch.Tensor):
-            print(f"[QWeightedSigmaScaler.scale] INPUT curves (unscaled R): tensor")
-            print(f"  - dtype: {curves.dtype}")
-            print(f"  - shape: {curves.shape}")
-            print(f"  - range: [{curves.min():.6e}, {curves.max():.6e}]")
-            print(f"  - mean: {curves.mean():.6e}")
             curves = curves.float()
         
         if isinstance(q_values, np.ndarray):
-            print(f"[QWeightedSigmaScaler.scale] INPUT q_values: numpy array")
-            print(f"  - dtype: {q_values.dtype}")
-            print(f"  - shape: {q_values.shape}")
-            print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
             q_values = torch.from_numpy(q_values).float()
-            print(f"  - Converted to tensor dtype: {q_values.dtype}")
         elif isinstance(q_values, torch.Tensor):
-            print(f"[QWeightedSigmaScaler.scale] INPUT q_values: tensor")
-            print(f"  - dtype: {q_values.dtype}")
-            print(f"  - shape: {q_values.shape}")
-            print(f"  - range: [{q_values.min():.6e}, {q_values.max():.6e}]")
             q_values = q_values.float()
-        
-        # Defensive check: physical reflectivity should be in range [~1e-10, ~2.0]
-        if curves.min() < -1.0 or curves.max() > 10.0:
-            print(f"[QWeightedSigmaScaler.scale] ⚠️  WARNING: Curves may be pre-scaled!")
-            print(f"  Physical R should be in [~1e-10, ~2.0], got [{curves.min():.3e}, {curves.max():.3e}]")
         
         # Apply transformation: dR' = dR * Q^(-beta) / (R * ln(10))
         q_weight = q_values ** (-self.beta)
-        print(f"[QWeightedSigmaScaler.scale] Q-weight (Q^-{self.beta}):")
-        print(f"  - range: [{q_weight.min():.6e}, {q_weight.max():.6e}]")
-        print(f"  - mean: {q_weight.mean():.6e}")
-        
         denominator = curves * self.ln10
-        print(f"[QWeightedSigmaScaler.scale] Denominator (R * ln(10)):")
-        print(f"  - range: [{denominator.min():.6e}, {denominator.max():.6e}]")
-        print(f"  - mean: {denominator.mean():.6e}")
-        
         result = sigmas * q_weight / denominator
-        result = result.float()
-        
-        print(f"[QWeightedSigmaScaler.scale] OUTPUT (dR' = dR * Q^-{self.beta} / (R * ln(10))):")
-        print(f"  - dtype: {result.dtype}")
-        print(f"  - shape: {result.shape}")
-        print(f"  - range: [{result.min():.6e}, {result.max():.6e}]")
-        print(f"  - mean: {result.mean():.6e}")
-        print(f"{'='*80}\n")
-        return result
+        return result.float()
     
     def restore(self, scaled_sigmas: Tensor, curves: Tensor, q_values: Tensor):
         """restores sigma values from scaled form (may not be used in practice)
