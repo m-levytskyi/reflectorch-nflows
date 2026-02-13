@@ -10,7 +10,6 @@ __pycache__/
 
 *.pt
 *.h5
-*.safetensors
 
 # Distribution / packaging
 .Python
