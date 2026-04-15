@@ -51,6 +51,7 @@ from reflectorch.data_generation.scale_curves import (
     MeanNormalizationCurvesScaler,
     QWeightedCurvesScaler,
     QWeightedSigmaScaler,
+    PositiveQCurvesScaler,
     MeanConditionedCurvesScaler,
 )
 from reflectorch.data_generation.utils import (
@@ -98,6 +99,7 @@ __all__ = [
     "MeanNormalizationCurvesScaler",
     "QWeightedCurvesScaler",
     "QWeightedSigmaScaler",
+    "PositiveQCurvesScaler",
     "MeanConditionedCurvesScaler",
     "get_reversed_params",
     "get_density_profiles",
