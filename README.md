@@ -2,7 +2,7 @@
 
 This repository extends the [reflectorch](https://github.com/schreiber-lab/reflectorch) package — a machine learning Python package for the analysis of X-ray and neutron reflectometry data — with support for normalizing flows models and several custom input transformations.
 
-> **Note:** This package is designed to be installed by the [evaluation pipeline repository](https://gitlab.lrz.de/thesis-levytskyi/evaluation_pipeline). It is dedicated to **training** the models. For evaluation and benchmarking, refer to the second repository.
+> **Note:** This package is designed to be installed by the [evaluation pipeline repository](https://github.com/m-levytskyi/inverse-eval). It is dedicated to **training** the models. For evaluation and benchmarking, refer to the second repository.
 
 ## What Was Changed
 
