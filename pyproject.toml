@@ -46,6 +46,7 @@ dependencies = [
 tests = ["pytest", "pytest-cov"]
 docs = ["jupyter-book", "sphinx"]
 build = ["build", "twine"]
+dev = ["pre-commit", "ruff", "ty", "pytest", "pytest-cov"]
 
 [project.urls]
 Source = "https://github.com/schreiber-lab/reflectorch/"
@@ -55,5 +56,26 @@ Documentation = "https://schreiber-lab.github.io/reflectorch/"
 [tool.setuptools]
 packages = ["reflectorch"]
 
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+src = ["reflectorch", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"reflectorch/__init__.py" = ["F403"]
+"reflectorch/**/__init__.py" = ["F401", "F403", "F405"]
+"tests/conftest.py" = ["F403"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ty.environment]
+python-version = "3.10"
+root = ["."]
+
+[tool.ty.src]
+include = ["reflectorch", "tests"]
+respect-ignore-files = true

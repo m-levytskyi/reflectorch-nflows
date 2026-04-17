@@ -63,6 +63,29 @@ pip install -e .
 
 Users with Nvidia GPUs should additionally install PyTorch with CUDA support from the [PyTorch website](https://pytorch.org/get-started/locally/).
 
+### Local development workflow
+
+For local development with formatting, linting, type checking, and test hooks:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[dev]
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
+
+Run hooks on specific files during development:
+
+```bash
+pre-commit run --files <path>
+```
+
+Run the opt-in type-checking hook manually:
+
+```bash
+pre-commit run ty-check --hook-stage manual
+```
+
 ### Training
 
 A quick example of the training process can be found in [nf_training.ipynb](nf_training.ipynb).
