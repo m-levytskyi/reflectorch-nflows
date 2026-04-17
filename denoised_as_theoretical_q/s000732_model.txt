@@ -1,0 +1,4 @@
+#layer        sld(A^-2)   thickness(A) roughness(A)  
+fronting      0.00000e+00      inf      3.54
+layer1        6.29546e-06      19.33      1.35
+backing       1.43811e-06      inf       none

@@ -1,0 +1,8 @@
+{
+  "source_dir": "denoised_on_experimental_q",
+  "output_dir": "denoised_as_theoretical_q",
+  "converted_theoretical_curves": 3169,
+  "copied_models": 3169,
+  "format": "2-column theoretical (Q, R)",
+  "notes": "Generated from denoised experimental curves with dR removed."
+}

@@ -42,3 +42,6 @@ documentation/_build/*
 
 #Other
 tensorboard_runs
+
+#Raw denoised dataset
+denoised_raw/*
