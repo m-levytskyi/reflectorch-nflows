@@ -266,6 +266,41 @@ class QWeightedSigmaScaler:
         return result.float()
 
 
+class PositiveQCurvesScaler(CurvesScaler):
+    """Curve scaler with positive Q exponent weighting: R' = R * Q^(alpha)
+
+    Args:
+        alpha (float): the exponent for Q-weighting. Defaults to 4.0.
+    """
+
+    def __init__(self, alpha: float = 4.0):
+        self.alpha = alpha
+
+    def scale(self, curves: Tensor, q_values: Tensor = None) -> Tensor:
+        """Scale reflectivity curves with positive Q exponent weighting.
+
+        Args:
+            curves: original reflectivity curves, shape [B, Nq]
+            q_values: Q values, shape [B, Nq]
+
+        Returns:
+            Q-weighted reflectivity curves
+        """
+        if q_values is None:
+            raise ValueError("PositiveQCurvesScaler requires q_values parameter")
+
+        q_weight = q_values ** self.alpha
+        return (curves * q_weight).float()
+
+    def restore(self, scaled_curves: Tensor, q_values: Tensor = None) -> Tensor:
+        """Restore physical reflectivity curves from positive-Q weighted form."""
+        if q_values is None:
+            raise ValueError("PositiveQCurvesScaler requires q_values parameter for restoration")
+
+        q_weight = q_values ** self.alpha
+        return (scaled_curves / q_weight).float()
+
+
 class MeanConditionedCurvesScaler(CurvesScaler):
     """Center reflectivity curves by subtracting per-sample mean.
     
