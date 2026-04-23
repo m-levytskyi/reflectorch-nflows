@@ -46,12 +46,8 @@ def _set_seed(seed: int | None) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def _ensure_empty_output_dir(output_dir: Path) -> None:
-    """Create the output directory and refuse to write into a non-empty target."""
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise FileExistsError(
-            f"Output directory {output_dir} already exists and is not empty."
-        )
+def _ensure_output_dir(output_dir: Path) -> None:
+    """Create the output directory when it does not already exist."""
     output_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -202,7 +198,7 @@ def export_synthetic_dataset(
         / "dataset"
         / "synthetic_inference_test"
     )
-    _ensure_empty_output_dir(output_path)
+    _ensure_output_dir(output_path)
 
     param_model = loader.prior_sampler.param_model
     param_labels = param_model.get_param_labels()
