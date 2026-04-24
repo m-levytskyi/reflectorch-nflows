@@ -18,6 +18,11 @@ The exporter can write into an existing directory. Regenerated sample files and
 `dataset_summary.json` are overwritten by path, while unrelated files such as
 this README are left in place.
 
+> **Note on reproducibility:** On CUDA, operations such as `conv1d` used in
+> smearing may be non-deterministic even with the same seed, so regenerated
+> curves may differ slightly from run to run on GPU. For exact bit-for-bit
+> reproducibility, regenerate on CPU.
+
 ## What Gets Generated
 
 The exporter loads the `dset` section of `configs/example_nf_config_reflectorch.yaml`, forces `calc_denoised_curves=True`, builds the dataset with `init_dset(...)`, samples batches until the requested size is reached, and writes one group of files per sample:
