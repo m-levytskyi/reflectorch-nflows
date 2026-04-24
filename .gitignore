@@ -45,3 +45,7 @@ tensorboard_runs
 
 #Raw denoised dataset
 denoised_raw/*
+
+#Synthetic dataset
+dataset/synthetic_inference_test/*
+!dataset/synthetic_inference_test/README.md

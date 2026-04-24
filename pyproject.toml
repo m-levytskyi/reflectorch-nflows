@@ -53,6 +53,9 @@ Source = "https://github.com/schreiber-lab/reflectorch/"
 Issues = "https://github.com/schreiber-lab/reflectorch/issues"
 Documentation = "https://schreiber-lab.github.io/reflectorch/"
 
+[project.scripts]
+reflectorch-export-synthetic-dataset = "reflectorch.export_synthetic_dataset:run_export_synthetic_dataset"
+
 [tool.setuptools]
 packages = ["reflectorch"]
 
