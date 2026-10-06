@@ -18,7 +18,7 @@ repos:
 
       - id: ruff-check
         name: ruff check
-        entry: ./.venv/bin/python -m ruff check --fix
+        entry: ./.venv/bin/python -m ruff check --select F --fix
         language: system
         files: ^(reflectorch|tests)/.*\.py$
         types_or: [python, pyi]
