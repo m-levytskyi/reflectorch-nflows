@@ -116,7 +116,9 @@ class _ExperimentSNPETrainer(NFlowTrainer):
         ).parameters
 
     def _scaled_theta(self, theta: Tensor) -> Tensor:
-        return self.loader.prior_sampler._scale(theta, self._prior_min, self._prior_max)
+        return self.loader.prior_sampler._scale(
+            theta.to(self._prior_min), self._prior_min, self._prior_max
+        )
 
     def get_loss_dict(self, batch_data: BasicBatchData):
         log_prob = self.model.log_prob(
@@ -149,8 +151,13 @@ def fine_tune_nflow(
     batch_size: int = 2_048,
     learning_rate: float = 1e-5,
     q_resolution: Optional[float] = 0.1,
+    ambient_sld: Optional[float] = None,
 ) -> NFlowTrainer:
-    """Fine-tune a separate NF copy with two-round SNPE-C simulation training."""
+    """Fine-tune a separate NF copy with two-round SNPE-C simulation training.
+
+    ``ambient_sld`` is accepted for compatibility; reflectivity depends on SLD
+    contrasts, so a common ambient offset does not change the simulated curves.
+    """
     if not isinstance(trainer, NFlowTrainer):
         raise TypeError("trainer must be an NFlowTrainer")
     if max_steps < 2 or batch_size < 1:
