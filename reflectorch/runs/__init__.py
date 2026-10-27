@@ -15,17 +15,19 @@ from reflectorch.runs.utils import (
 )
 
 from reflectorch.runs.config import load_config
+from reflectorch.runs.finetune import fine_tune_nflow
 
 __all__ = [
-    'run_train',
-    'run_train_on_cluster',
-    'train_from_config',
-    'run_test_config',
-    'get_trainer_from_config',
-    'get_paths_from_config',
-    'get_callbacks_from_config',
-    'get_trainer_by_name',
-    'get_callbacks_by_name',
-    'convert_pt_to_safetensors',
-    'load_config',
+    "run_train",
+    "run_train_on_cluster",
+    "train_from_config",
+    "run_test_config",
+    "get_trainer_from_config",
+    "get_paths_from_config",
+    "get_callbacks_from_config",
+    "get_trainer_by_name",
+    "get_callbacks_by_name",
+    "convert_pt_to_safetensors",
+    "load_config",
+    "fine_tune_nflow",
 ]
