@@ -5,7 +5,6 @@ from reflectorch import ConstantQ, LogAffineCurvesScaler, SubpriorParametricSamp
 from reflectorch.ml.basic_trainer import DataLoader
 from reflectorch.ml.trainers import NFlowTrainer
 from reflectorch.runs import fine_tune_nflow
-from reflectorch.runs.finetune import _importance_weights
 
 
 class _TinyFlow(nn.Module):
@@ -29,11 +28,7 @@ class _Loader(DataLoader):
         self.smearing = None
 
 
-def test_fine_tune_uses_proposal_correction_and_a_separate_cpu_model():
-    weights = _importance_weights(torch.tensor([0.0, 1.0]))
-    assert weights[0] > weights[1]
-    assert torch.isclose(weights.sum(), torch.tensor(2.0))
-
+def test_fine_tune_uses_prior_simulations_and_a_separate_cpu_model():
     sampler = SubpriorParametricSampler(
         param_ranges={
             "thicknesses": (1.0, 100.0),
@@ -74,19 +69,12 @@ def test_fine_tune_uses_proposal_correction_and_a_separate_cpu_model():
         prior_bounds=bounds,
         max_steps=2,
         batch_size=2,
-        ambient_sld=0.0,
     )
 
     assert adapted is not base_trainer
     assert adapted.model is not base_trainer.model
     assert torch.equal(base_model.bias.detach(), original_weight)
     assert len(adapted.losses[adapted.TOTAL_LOSS_KEY]) == 2
-    assert adapted._round == 2
-    assert adapted._proposal_log_prob is not None
-    assert (
-        adapted._scaled_theta(torch.zeros(sampler.param_dim, dtype=torch.float64)).dtype
-        == torch.float32
-    )
     assert all(
         torch.isfinite(torch.tensor(loss))
         for loss in adapted.losses[adapted.TOTAL_LOSS_KEY]
